@@ -25,13 +25,22 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 补装 SDK 组件
+      # GitHub 的 ubuntu runner 自带 Android SDK，不再用 setup-android（它在
+      # cmdline-tools 16 上装 "tools" 包会失败）。缺 SDK 时才补装，且不让它中断构建。
+      - name: 检查 Android SDK
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          echo "ANDROID_HOME=${ANDROID_HOME:-未设置}"
+          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
+          ls "${ANDROID_HOME}/build-tools" 2>/dev/null || true
+          if [ ! -d "${ANDROID_HOME}/platforms/android-34" ]; then
+            SDKMGR=$(ls -d "${ANDROID_HOME}"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)
+            if [ -n "${SDKMGR}" ]; then
+              echo "补装 android-34：${SDKMGR}"
+              yes | "${SDKMGR}" --licenses > /dev/null 2>&1 || true
+              "${SDKMGR}" --install "platforms;android-34" "build-tools;34.0.0" || true
+            fi
+          fi
+          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
 
       - name: 缓存 Gradle
         uses: actions/cache@v4
