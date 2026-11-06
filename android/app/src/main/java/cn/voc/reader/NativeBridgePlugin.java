@@ -137,7 +137,14 @@ public class NativeBridgePlugin extends Plugin {
     @PluginMethod
     public void info(PluginCall call) {
         JSObject o = new JSObject();
-        o.put("version", BuildConfig.VERSION_NAME);
+        // AGP 8 默认不生成 BuildConfig，这里直接问系统要版本号
+        String version = "1.0";
+        try {
+            version = getContext().getPackageManager()
+                    .getPackageInfo(getContext().getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+        }
+        o.put("version", version);
         o.put("sdk", Build.VERSION.SDK_INT);
         o.put("device", Build.MANUFACTURER + " " + Build.MODEL);
         call.resolve(o);
