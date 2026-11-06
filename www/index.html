@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0f1720">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>VOCs 读数采集</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ 启动遮罩：等待模型加载 ============ -->
+<div id="boot">
+  <div class="boot-card">
+    <div class="boot-title">VOCs 读数采集</div>
+    <div class="boot-msg" id="bootMsg">正在启动…</div>
+    <div class="bar"><i id="bootBar"></i></div>
+    <div class="boot-hint">正在加载本地识别模型（11 MB，离线运行，无需联网）</div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ==================== ① 上部：摄像头画面 ==================== -->
+  <section class="stage" id="stage">
+    <canvas id="preview"></canvas>
+
+    <div class="stage-top">
+      <span class="pill" id="pillCam">相机</span>
+      <span class="pill" id="pillAwake">常亮</span>
+      <span class="pill" id="pillFps">-- fps</span>
+    </div>
+
+    <div class="hud" id="hud">
+      <span class="hud-v" id="hudValue">--</span>
+      <span class="hud-u">ppm</span>
+      <span class="hud-tag" id="hudTag"></span>
+    </div>
+
+    <div class="debug-panel" id="debugPanel">
+      <div class="crop-box">
+        <canvas id="cropPreview"></canvas>
+        <div class="crop-label">识别区域</div>
+      </div>
+      <div class="debug-info">
+        <div><b id="dbgValue">--</b> <span class="dim">ppm</span></div>
+        <div class="dim" id="dbgScore">置信度 --</div>
+        <div class="dim" id="dbgSharp">清晰度 --</div>
+        <div class="dim" id="dbgMs">耗时 --</div>
+      </div>
+      <div class="debug-tip" id="debugTip">拖动四个角，让蓝框套住整块液晶屏</div>
+    </div>
+
+    <div class="stage-tools">
+      <button class="tbtn" id="btnDebug">调试</button>
+      <button class="tbtn" id="btnAuto">自动框</button>
+      <button class="tbtn" id="btnFlip">切换镜头</button>
+    </div>
+  </section>
+
+  <!-- ==================== ② 中部：实时曲线 ==================== -->
+  <section class="chartwrap">
+    <div class="chart-head">
+      <span class="chart-title">浓度趋势</span>
+      <span class="chart-sub" id="chartSub">等待采集</span>
+    </div>
+    <canvas id="chart"></canvas>
+  </section>
+
+  <!-- ==================== ③ 下部：采集数据 ==================== -->
+  <section class="datawrap">
+    <div class="stats">
+      <div class="stat"><span>当前</span><b id="stCur">--</b></div>
+      <div class="stat"><span>最大</span><b id="stMax">--</b></div>
+      <div class="stat"><span>平均</span><b id="stAvg">--</b></div>
+      <div class="stat"><span>点数</span><b id="stCnt">0</b></div>
+      <div class="stat"><span>待核对</span><b id="stBad">0</b></div>
+    </div>
+
+    <div class="list" id="list">
+      <div class="list-empty" id="listEmpty">还没有数据<br><span>按下面「开始」即按间隔自动采集</span></div>
+      <table id="tbl">
+        <thead><tr><th>时间</th><th>读数</th><th>状态</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="ctrl">
+      <button class="main" id="btnRun">开始采集</button>
+      <label class="interval">
+        间隔
+        <input id="interval" type="number" inputmode="decimal" min="0.5" step="0.5" value="5">
+        <span>秒</span>
+      </label>
+    </div>
+
+    <div class="exports">
+      <button id="btnCsv">导出 CSV</button>
+      <button id="btnXlsx">导出 Excel</button>
+      <button id="btnZip">照片打包</button>
+      <button id="btnClear" class="ghost">清空</button>
+    </div>
+
+    <label class="chk"><input type="checkbox" id="autoSave"> 每张自动存到手机（下载/VOCMonitor）</label>
+    <div class="foot">全部计算在本机完成，不联网、不上传。照片与数据存于「下载/VOCMonitor/日期/」，关闭页面前请导出一次。</div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="vendor/ort.min.js"></script>
+<script src="ocr.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# Capacitor 生成物（由 cap sync 重新生成，不进仓库）
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+
+# Gradle / 构建产物
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# 系统与日志
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

@@ -1,0 +1,12 @@
+{
+  "appId": "cn.voc.reader",
+  "appName": "VOC读数采集",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "webContentsDebuggingEnabled": true,
+    "backgroundColor": "#0f1720"
+  }
+}
