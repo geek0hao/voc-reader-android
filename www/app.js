@@ -14,8 +14,12 @@
   "use strict";
 
   /* ----------------------------------------------------------- 常量 */
-  const INNER = { x0: 0.0, wf: 0.70, y0: 0.08, hf: 0.74 }; // 屏幕 → 数字区
-  const LS = { roi: "voc.roi", interval: "voc.interval", autosave: "voc.autosave", facing: "voc.facing" };
+  const LS = { roi: "voc.roi", interval: "voc.interval", autosave: "voc.autosave", facing: "voc.facing", tpl: "voc.tpl" };
+
+  /* 数字区相对液晶屏的默认比例。
+   * 实测 p1/p3/p5 三张正拍：数字行位于屏内 x 0.32~0.71、y 0.13~0.59、行高占 0.40，
+   * 这里四周各留余量，既容得下 4 位读数，也不至于切边。 */
+  const TPL_DEFAULT = { x0: 0.22, y0: 0.05, wf: 0.60, hf: 0.63 };
   const IMG_CAP_BYTES = 180 * 1024 * 1024;   // 照片占用上限，超了丢最旧的图（数据保留）
   const MAX_ROWS = 400;                      // 表格最多渲染行数
 
@@ -42,6 +46,11 @@
     nextAt: 0,
     lastValue: null,
     busy: false,
+    lastLines: [],       // 最近一次 det 检测到的文字行（画在预览上）
+    lastPick: null,      // 最近一次选中的数值行
+    detBusy: false,
+    detAt: 0,
+    tpl: null,           // 数字区相对屏框的比例；非空即“模板已锁定”
   };
 
   /* ----------------------------------------------------------- 元素 */
@@ -54,7 +63,8 @@
     dbgValue: $("#dbgValue"), dbgScore: $("#dbgScore"), dbgSharp: $("#dbgSharp"),
     dbgMs: $("#dbgMs"), debugTip: $("#debugTip"),
     btnDebug: $("#btnDebug"), btnAuto: $("#btnAuto"), btnFlip: $("#btnFlip"),
-    chart: $("#chart"), chartSub: $("#chartSub"),
+    btnCalib: $("#btnCalib"), btnTplReset: $("#btnTplReset"), tplState: $("#tplState"),
+    chart: $("#chart"), chartSub: $("#chartSub"), chartwrap: $("#chartwrap"),
     stCur: $("#stCur"), stMax: $("#stMax"), stAvg: $("#stAvg"), stCnt: $("#stCnt"), stBad: $("#stBad"),
     list: $("#list"), listEmpty: $("#listEmpty"), tbody: $("#tbody"),
     btnRun: $("#btnRun"), interval: $("#interval"),
@@ -206,7 +216,10 @@
       const iv = parseFloat(localStorage.getItem(LS.interval) || "");
       if (iv > 0) el.interval.value = iv;
       el.autoSave.checked = localStorage.getItem(LS.autosave) === "1";
+      const tpl = JSON.parse(localStorage.getItem(LS.tpl) || "null");
+      if (tpl && typeof tpl.x0 === "number") S.tpl = tpl;
     } catch (e) {}
+    updateTplState();
   }
 
   /* =========================================================== 相机 */
@@ -290,7 +303,8 @@
     ctxP.clearRect(0, 0, cw, ch);
     if (!S.videoW) return;
 
-    // 等比铺满（cover），保持比例不拉伸
+    // 等比铺满（cover）：液晶屏位于画面中央，铺满后屏幕本身更大更清楚，
+    // 左右多出来的视野裁掉不影响对准。
     const s = Math.max(cw / S.videoW, ch / S.videoH);
     const dw = S.videoW * s, dh = S.videoH * s;
     const ox = (cw - dw) / 2, oy = (ch - dh) / 2;
@@ -305,9 +319,13 @@
     ctxP.fillStyle = "rgba(6,10,14,.42)";
     ctxP.fillRect(0, 0, cw, ch);
     ctxP.clearRect(r.x, r.y, r.w, r.h);
-    ctxP.drawImage(video, ox + S.roi.x * S.videoW * s, oy + S.roi.y * S.videoH * s,
-                   S.roi.w * S.videoW * s, S.roi.h * S.videoH * s,
-                   r.x, r.y, r.w, r.h);
+    /* 框内重新按原分辨率画一遍（提亮）。
+     * 注意：drawImage 的源坐标是「视频像素」，不能加上画布偏移 ox/oy——
+     * 老版本这里错误地带了偏移，导致框里画出的是画面外的区域（一块黑）。 */
+    ctxP.drawImage(video,
+      S.roi.x * S.videoW, S.roi.y * S.videoH,
+      S.roi.w * S.videoW, S.roi.h * S.videoH,
+      r.x, r.y, r.w, r.h);
     ctxP.restore();
 
     // 外框
@@ -315,15 +333,37 @@
     ctxP.lineWidth = 2;
     ctxP.strokeRect(r.x, r.y, r.w, r.h);
 
+    // 数字区（真正送进识别模型的那块）——模板模式按比例实时算，否则用检测结果
+    const target = S.tpl ? tplToScreen() : (S.lastPick ? lineToScreen(S.lastPick) : null);
+
     if (S.debug) {
-      // 内区（真正送识别的范围）用绿色虚线标出
-      const ir = innerScreen(r);
-      ctxP.save();
-      ctxP.strokeStyle = "#3ecf8e";
-      ctxP.setLineDash([6, 4]);
-      ctxP.lineWidth = 1.5;
-      ctxP.strokeRect(ir.x, ir.y, ir.w, ir.h);
-      ctxP.restore();
+      // 自动模式下把检测到的每一行文字都用绿色细框标出
+      if (!S.tpl) {
+        ctxP.save();
+        ctxP.lineWidth = 1.5;
+        for (const L of S.lastLines) {
+          if (S.lastPick && L === S.lastPick) continue;   // 选中行另画
+          const q = lineToScreen(L);
+          ctxP.strokeStyle = "rgba(62,207,142,.92)";
+          ctxP.strokeRect(q.x, q.y, q.w, q.h);
+        }
+        ctxP.restore();
+      }
+
+      if (target) {
+        ctxP.fillStyle = "rgba(240,150,40,.16)";
+        ctxP.fillRect(target.x, target.y, target.w, target.h);
+        ctxP.strokeStyle = "#f09628";
+        ctxP.lineWidth = 2.5;
+        ctxP.strokeRect(target.x, target.y, target.w, target.h);
+        // 标注文字，让“这一块就是识别区”一目了然
+        ctxP.save();
+        ctxP.fillStyle = "#f09628";
+        ctxP.font = '600 11px -apple-system, "PingFang SC", sans-serif';
+        ctxP.textBaseline = "bottom";
+        ctxP.fillText(S.tpl ? "数字区（已锁定）" : "数字区（自动）", target.x + 2, target.y - 3);
+        ctxP.restore();
+      }
 
       // 四角手柄
       ctxP.fillStyle = "#4a9fe0";
@@ -335,7 +375,19 @@
         ctxP.lineWidth = 2;
         ctxP.stroke();
       }
+    } else if (target) {
+      // 采集过程中也标一下当前锁定的读数区，便于确认没跑偏
+      ctxP.strokeStyle = "rgba(240,150,40,.85)";
+      ctxP.lineWidth = 2;
+      ctxP.strokeRect(target.x, target.y, target.w, target.h);
     }
+  }
+
+  /* 模板数字区 → 屏幕坐标 */
+  function tplToScreen() {
+    const { s, ox, oy } = S.map;
+    const d = tplRect(roiPx(S.roi));
+    return { x: ox + d.x * s, y: oy + d.y * s, w: d.w * s, h: d.h * s };
   }
 
   function roiToScreen() {
@@ -347,13 +399,17 @@
       h: S.roi.h * S.videoH * s,
     };
   }
-  function innerOf(r) {
+
+  /* 检测行（相对 ROI 的像素坐标）→ 屏幕坐标 */
+  function lineToScreen(L) {
+    const { s, ox, oy } = S.map;
     return {
-      x: r.x + r.w * INNER.x0, y: r.y + r.h * INNER.y0,
-      w: r.w * INNER.wf, h: r.h * INNER.hf,
+      x: ox + (S.roi.x * S.videoW + L.x) * s,
+      y: oy + (S.roi.y * S.videoH + L.y) * s,
+      w: L.w * s,
+      h: L.h * s,
     };
   }
-  function innerScreen(r) { return innerOf(r); }
 
   /* 归一化 ROI → 视频帧像素 */
   function roiPx(roi) {
@@ -452,13 +508,122 @@
   /* =========================================================== 识别 */
   async function recognizeFrame(src) {
     const outer = roiPx(S.roi);
-    const inner = innerOf(outer);
-    const r = await OCR.readVote(src, inner);
+
+    /* 模板已锁定时：不再跑文字检测，直接按“屏幕 → 数字区”的固定比例裁剪。
+     * 这台仪器屏幕布局固定、只有数值在变，所以位置可以一次校准、长期复用，
+     * 比每帧重新找文字稳得多，也快得多。 */
+    if (S.tpl) {
+      const d = tplRect(outer);
+      // 双次读取：原位置 + 轻微外扩，两者一致才算稳定（沿用旧的抗抖思路）
+      const a = await OCR.readLine(src, d);
+      const pad = 0.045;
+      const d2 = {
+        x: Math.max(0, d.x - d.w * pad), y: Math.max(0, d.y - d.h * pad),
+        w: d.w * (1 + pad * 2), h: d.h * (1 + pad * 2),
+      };
+      const b = await OCR.readLine(src, d2);
+      const same = a.value != null && a.value === b.value;
+      const use = (!same && b.score > a.score) ? b : a;
+      const line = {
+        x: d.x - outer.x, y: d.y - outer.y, w: d.w, h: d.h,
+        ...use, agree: same ? 2 : 1,
+      };
+      let flag = "";
+      if (line.value == null) flag = "未识别";
+      else if (!same) flag = "不一致";
+      else if (line.score < 0.5) flag = "低置信";
+
+      S.lastLines = [line];
+      S.lastPick = line;
+      return {
+        value: line.value, text: line.text, score: line.score,
+        flag, lines: [line], best: line, nLines: 1,
+        ms: a.ms + b.ms, outer, agree: line.agree,
+      };
+    }
+
+    // 未校准时：先检测出框内所有文字行，再逐行识别，挑出最像读数的那个
+    const r = await OCR.readScreen(src, outer, { maxLines: 5 });
     let flag = "";
-    if (r.value == null) flag = "未识别";
-    else if (r.agree < 2) flag = "不一致";
+    if (r.value == null) flag = r.nLines ? "未识别" : "无文字";
     else if (r.score < 0.5) flag = "低置信";
-    return { ...r, flag, outer, inner };
+
+    // 保存给预览层画框用
+    S.lastLines = r.lines || [];
+    S.lastPick = r.best || null;
+
+    return { ...r, flag, outer };
+  }
+
+  /* 模板比例 → 帧内像素矩形 */
+  function tplRect(outer) {
+    const t = S.tpl || TPL_DEFAULT;
+    return {
+      x: outer.x + outer.w * t.x0,
+      y: outer.y + outer.h * t.y0,
+      w: outer.w * t.wf,
+      h: outer.h * t.hf,
+    };
+  }
+
+  /* ------------------------------------------------ 学习数字区（校准）
+   * 在已对准的屏框内跑一次文字检测，把找到的读数行换算成“相对屏幕的比例”存下来。
+   * 自动结果会加边距，避免换到 4 位读数时被切边。
+   */
+  async function calibrateTemplate() {
+    const src = grabFrame();
+    if (!src) return toast("相机未就绪");
+    const outer = roiPx(S.roi);
+    toast("正在学习数字区…");
+    let r;
+    try {
+      r = await OCR.readScreen(src, outer, { maxLines: 5 });
+    } catch (e) {
+      return toast("学习失败：" + (e.message || e));
+    }
+    if (!r.best) {
+      S.tpl = { ...TPL_DEFAULT };
+      saveTpl();
+      updateTplState();
+      return toast("没检测到数字，已改用默认比例，请看橙框是否套住读数");
+    }
+    const b = r.best;
+    // 相对屏框的比例 + 边距（左右各 12%，上下各 18%）
+    let x0 = b.x / outer.w, y0 = b.y / outer.h;
+    let wf = b.w / outer.w, hf = b.h / outer.h;
+    const mx = wf * 0.12, my = hf * 0.18;
+    x0 = Math.max(0, x0 - mx);
+    y0 = Math.max(0, y0 - my);
+    wf = Math.min(1 - x0, wf + mx * 2);
+    hf = Math.min(1 - y0, hf + my * 2);
+    // 读数可能从 1 位变到 4 位，宽度给足，避免切掉高位数字
+    if (wf < 0.52) {
+      const grow = 0.52 - wf;
+      x0 = Math.max(0, x0 - grow / 2);
+      wf = Math.min(1 - x0, 0.52);
+    }
+    S.tpl = { x0, y0, wf, hf };
+    saveTpl();
+    updateTplState();
+    toast(`数字区已锁定：屏内 (${x0.toFixed(2)}, ${y0.toFixed(2)}, ${wf.toFixed(2)}×${hf.toFixed(2)})`);
+  }
+
+  function saveTpl() {
+    try {
+      if (S.tpl) localStorage.setItem(LS.tpl, JSON.stringify(S.tpl));
+      else localStorage.removeItem(LS.tpl);
+    } catch (e) {}
+  }
+
+  function updateTplState() {
+    if (!el.tplState) return;
+    if (S.tpl) {
+      el.tplState.textContent = "模板已锁定";
+      el.tplState.classList.add("ok");
+    } else {
+      el.tplState.textContent = "模板未锁定（自动找字）";
+      el.tplState.classList.remove("ok");
+    }
   }
 
   /* =========================================================== 时间戳烧录 */
@@ -511,7 +676,8 @@
 
       const rec = {
         id: seq, t: when.getTime(), value: r.value, score: r.score,
-        agree: r.agree, flag: r.flag, blob, bytes: blob ? blob.size : 0,
+        nLines: r.nLines || 0, lineH: r.best ? Math.round(r.best.h) : 0,
+        flag: r.flag, blob, bytes: blob ? blob.size : 0,
         name: `VOC_${fmtFileStamp(when)}_${String(seq).padStart(3, "0")}.jpg`,
       };
       S.records.push(rec);
@@ -585,6 +751,10 @@
     S.debug = force != null ? force : !S.debug;
     el.btnDebug.classList.toggle("active", S.debug);
     el.debugPanel.classList.toggle("show", S.debug);
+    // 调试时把曲线区让给调试面板，画面保持完整不被遮挡
+    if (el.chartwrap) el.chartwrap.style.display = S.debug ? "none" : "";
+    // 调试时收起数据表格与说明，把高度留给取景画面，方便对准
+    document.body.classList.toggle("debug-mode", S.debug);
     if (S.debug) {
       if (S.running) stopRun();
       debugLoop();
@@ -592,6 +762,9 @@
       clearTimeout(S.debugTimer);
     }
     drawPreview();
+    // 布局变化（曲线区隐藏、画面变高）后必须重算画布映射，否则框会落在旧位置
+    setTimeout(() => { drawPreview(); if (!S.debug) drawChart(); }, 60);
+    setTimeout(() => { drawPreview(); if (!S.debug) drawChart(); }, 260);
   }
 
   async function debugLoop() {
@@ -599,30 +772,41 @@
     try {
       const src = grabFrame();
       if (src) {
+        const t0 = performance.now();
         const r = await recognizeFrame(src);
 
-        // 裁剪预览
-        const inner = innerOf(roiPx(S.roi));
+        /* 浮窗显示的就是“真正送进识别模型的那一行”——所见即所识别。
+         * 没挑到行时退回显示整个框，让用户知道框内大概是什么内容。 */
+        const roi = roiPx(S.roi);
+        const show = r.best
+          ? { x: roi.x + r.best.x, y: roi.y + r.best.y, w: r.best.w, h: r.best.h }
+          : roi;
         const iw = el.cropPreview.clientWidth * 2, ih = el.cropPreview.clientHeight * 2;
         if (el.cropPreview.width !== iw) { el.cropPreview.width = iw; el.cropPreview.height = ih; }
         ctxC.fillStyle = "#0b1118";
         ctxC.fillRect(0, 0, iw, ih);
-        ctxC.drawImage(src, inner.x, inner.y, inner.w, inner.h, 0, 0, iw, ih);
+        // 等比铺满，避免压扁导致和真实形状对不上
+        const sc = Math.max(iw / show.w, ih / show.h);
+        const dw = show.w * sc, dh = show.h * sc;
+        ctxC.drawImage(src, show.x, show.y, show.w, show.h,
+                       (iw - dw) / 2, (ih - dh) / 2, dw, dh);
 
-        const sharp = Math.round(OCR.sharpness(src, inner));
+        const sharp = Math.round(OCR.sharpness(src, show));
         el.dbgValue.textContent = r.value != null ? r.value : "--";
-        el.dbgScore.textContent = "置信度 " + r.score.toFixed(2) + "　一致性 " + r.agree + "/3";
+        el.dbgScore.textContent =
+          "置信度 " + r.score.toFixed(2) + "　检出 " + (r.lines ? r.lines.length : 0) + " 行";
         el.dbgSharp.textContent = "清晰度 " + sharp;
-        el.dbgMs.textContent = "耗时 " + r.runs.reduce((a, b) => a + b.ms, 0) + " ms";
+        el.dbgMs.textContent = "耗时 " + r.ms + " ms";
 
         el.hudValue.textContent = r.value != null ? r.value : "--";
         el.hudTag.textContent = r.flag || "";
         el.hudTag.className = "hud-tag" + (r.flag ? " show" : "");
 
         let tip;
-        if (r.value == null) tip = "框内没读到数字：把蓝框套住整块液晶屏，避开反光";
+        if (r.value == null && !r.nLines) tip = "框里没找到文字：把蓝框套住整块液晶屏，避开反光";
+        else if (r.value == null) tip = "找到文字但都不是读数：让数字行完整落在框内，别切边";
         else if (sharp < 80) tip = "画面偏模糊：靠近一点，或点一下画面让手机重新对焦";
-        else if (r.agree < 2) tip = "读数不稳定：稳住手机，避开屏幕反光";
+        else if (r.score < 0.5) tip = "读数置信度偏低：稳住手机，避开屏幕反光";
         else if (r.flag) tip = "结果异常：" + r.flag + "，试着把框套得更正一些";
         else tip = "读数稳定，可以退出调试并开始采集";
         el.debugTip.textContent = tip;
@@ -783,12 +967,13 @@
 
   function exportCSV() {
     if (!S.records.length) return toast("还没有数据");
-    const lines = ["序号,时间,读数(ppm),置信度,一致性,状态,图片文件"];
+    const lines = ["序号,时间,读数(ppm),置信度,检出行数,行高(px),状态,图片文件"];
     for (const r of S.records) {
       const d = new Date(r.t);
       lines.push([
         r.id, `${fmtStamp(d)}`, r.value != null ? r.value : "",
-        r.score ? r.score.toFixed(3) : "", r.agree || "", r.flag || "正常", r.name,
+        r.score ? r.score.toFixed(3) : "", r.nLines || 0, r.lineH || 0,
+        r.flag || "正常", r.name,
       ].join(","));
     }
     const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
@@ -854,12 +1039,13 @@
   function exportXLSX() {
     if (!S.records.length) return toast("还没有数据");
     const enc = new TextEncoder();
-    const header = ["序号", "时间", "读数(ppm)", "置信度", "一致性", "状态", "图片文件"];
+    const header = ["序号", "时间", "读数(ppm)", "置信度", "检出行数", "行高(px)", "状态", "图片文件"];
     const rows = [header];
     for (const r of S.records) {
       rows.push([
         r.id, fmtStamp(new Date(r.t)), r.value != null ? Number(r.value) : "",
-        r.score ? +r.score.toFixed(3) : "", r.agree || 0, r.flag || "正常", r.name,
+        r.score ? +r.score.toFixed(3) : "", r.nLines || 0, r.lineH || 0,
+        r.flag || "正常", r.name,
       ]);
     }
     let sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -954,6 +1140,17 @@
       }
     });
 
+    el.btnCalib && el.btnCalib.addEventListener("click", calibrateTemplate);
+    el.btnTplReset && el.btnTplReset.addEventListener("click", () => {
+      S.tpl = null;
+      saveTpl();
+      updateTplState();
+      S.lastLines = [];
+      S.lastPick = null;
+      toast("已改回自动找字模式");
+      drawPreview();
+    });
+
     el.interval.addEventListener("change", () => {
       const v = Math.max(0.5, parseFloat(el.interval.value) || 5);
       el.interval.value = v;
@@ -979,7 +1176,7 @@
       toast("已清空");
     });
 
-    window.addEventListener("resize", () => { drawChart(); });
+    window.addEventListener("resize", () => { drawChart(); drawPreview(); });
 
     // 首次进入：给个引导
     if (!localStorage.getItem(LS.roi)) {
@@ -988,5 +1185,8 @@
   }
 
   /* =========================================================== 启动 */
+  // 暴露内部状态，方便排查（也可在浏览器控制台里手动调整 ROI：__VOC.roi）
+  window.__VOC = S;
+  window.__redraw = () => { drawPreview(); drawChart(); };
   boot();
 })();

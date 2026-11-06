@@ -18,7 +18,7 @@
     <div class="boot-title">VOCs 读数采集</div>
     <div class="boot-msg" id="bootMsg">正在启动…</div>
     <div class="bar"><i id="bootBar"></i></div>
-    <div class="boot-hint">正在加载本地识别模型（11 MB，离线运行，无需联网）</div>
+    <div class="boot-hint">正在加载本地识别模型（13 MB，离线运行，无需联网）</div>
   </div>
 </div>
 
@@ -40,20 +40,6 @@
       <span class="hud-tag" id="hudTag"></span>
     </div>
 
-    <div class="debug-panel" id="debugPanel">
-      <div class="crop-box">
-        <canvas id="cropPreview"></canvas>
-        <div class="crop-label">识别区域</div>
-      </div>
-      <div class="debug-info">
-        <div><b id="dbgValue">--</b> <span class="dim">ppm</span></div>
-        <div class="dim" id="dbgScore">置信度 --</div>
-        <div class="dim" id="dbgSharp">清晰度 --</div>
-        <div class="dim" id="dbgMs">耗时 --</div>
-      </div>
-      <div class="debug-tip" id="debugTip">拖动四个角，让蓝框套住整块液晶屏</div>
-    </div>
-
     <div class="stage-tools">
       <button class="tbtn" id="btnDebug">调试</button>
       <button class="tbtn" id="btnAuto">自动框</button>
@@ -61,8 +47,28 @@
     </div>
   </section>
 
+  <!-- ============ 调试面板：占曲线区的位置，不遮挡画面 ============ -->
+  <section class="debug-panel" id="debugPanel">
+    <div class="crop-box">
+      <canvas id="cropPreview"></canvas>
+      <div class="crop-label">实际识别区</div>
+    </div>
+    <div class="debug-info">
+      <div><b id="dbgValue">--</b> <span class="dim">ppm</span></div>
+      <div class="dim" id="dbgScore">置信度 --</div>
+      <div class="dim" id="dbgSharp">清晰度 --</div>
+      <div class="dim" id="dbgMs">耗时 --</div>
+    </div>
+    <div class="tpl-bar">
+      <button class="tbtn sm" id="btnCalib">学习数字区</button>
+      <button class="tbtn sm ghost" id="btnTplReset">重置</button>
+      <span class="tpl-state" id="tplState">模板未锁定</span>
+    </div>
+    <div class="debug-tip" id="debugTip">拖动四个角，让蓝框贴住液晶屏的边框</div>
+  </section>
+
   <!-- ==================== ② 中部：实时曲线 ==================== -->
-  <section class="chartwrap">
+  <section class="chartwrap" id="chartwrap">
     <div class="chart-head">
       <span class="chart-title">浓度趋势</span>
       <span class="chart-sub" id="chartSub">等待采集</span>
