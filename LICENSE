@@ -19,14 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party components bundled in this repository:
-
-- PP-OCRv3 detection/recognition models (web/assets/ch_ppocr_v3_det.onnx,
-  web/assets/ch_ppocr_v3_rec.onnx) — Copyright Baidu, Inc., licensed under
-  the Apache License 2.0. See https://github.com/PaddlePaddle/PaddleOCR
-- ONNX Runtime Web (web/vendor/ort.min.js, web/vendor/ort-wasm-simd.wasm) —
-  Copyright Microsoft Corporation, licensed under the MIT License.
-  See https://github.com/microsoft/onnxruntime

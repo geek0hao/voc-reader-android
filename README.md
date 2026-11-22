@@ -277,6 +277,6 @@ A：单张只存裁剪后的屏幕区域，JPEG 约 15–20 KB。1 秒间隔约 
 ## 许可与声明
 
 - 本项目代码以 **MIT License** 发布，见 [LICENSE](LICENSE)。
-- 识别模型为百度 **PP-OCRv3**（Apache-2.0），推理引擎为 **ONNX Runtime Web**（MIT），两者均随仓库分发，遵循各自许可。
+- 识别模型为百度 **PP-OCRv3**（Apache-2.0），推理引擎为 **ONNX Runtime Web**（MIT），两者均随仓库分发，遵循各自许可，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 - 本项目与 **霍尼韦尔（Honeywell）** 无任何隶属或背书关系，`PGM-7300`、`MiniRAE` 等为其商标，此处仅用于说明适配对象。
 - 本软件是实验辅助工具，**不能替代仪器本身的读数与安全联锁**。涉及人身安全的场合，请以仪器显示与持证人员判断为准。
