@@ -1,6 +1,6 @@
 {
   "appId": "cn.voc.reader",
-  "appName": "VOC读数采集",
+  "appName": "屏读采集",
   "webDir": "www",
   "server": {
     "androidScheme": "https"

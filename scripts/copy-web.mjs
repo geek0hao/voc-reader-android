@@ -1,6 +1,9 @@
 /**
- * 把 ../mobile_ocr 里的网页资源同步到 www/
- * （mobile_ocr 仍是唯一源码，这里只做搬运，避免两份代码各改一处）
+ * 把 web/ 里的网页资源同步到 www/
+ * （web/ 是唯一源码，www/ 是构建产物，只做搬运，避免两份代码各改一处）
+ *
+ * 兼容老目录：如果 web/ 不存在，退回上层目录的 mobile_ocr/
+ * （早期开发时网页源码放在仓库外，保留这条回落路径免得打断老工作流）
  */
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -9,10 +12,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const src = path.resolve(root, "..", "mobile_ocr");
 const dst = path.resolve(root, "www");
 
-const FILES = ["index.html", "style.css", "app.js", "ocr.js", "manifest.webmanifest"];
+const candidates = [path.resolve(root, "web"), path.resolve(root, "..", "mobile_ocr")];
+const src = candidates.find((p) => existsSync(p)) || candidates[0];
+
+const FILES = ["index.html", "style.css", "app.js", "autocorrect.js", "ocr.js", "manifest.webmanifest"];
 const DIRS = ["assets", "vendor"];
 
 if (!existsSync(src)) {
