@@ -6,6 +6,8 @@
 >
 > 因为识别对象只是"屏幕上的一个数字"，同一个 APK 也可以用于其他只有屏幕、没有数据接口的便携式仪表（各种泵吸式/扩散式气体检测仪、部分流量计与温湿度表），只要把取景框套住数字区即可。
 
+**[⬇ 下载最新 APK](https://github.com/geek0hao/voc-reader-android/releases/latest)** · Android 5.1+ · 约 19 MB · 离线可用 · MIT 开源
+
 ![主界面](docs/images/screenshot-main.png)
 
 ---
@@ -61,11 +63,13 @@
 
 ### 方式一：下载现成 APK（推荐给现场使用者）
 
-到本仓库的 Actions 页面，点最新一次 **Build APK** → 页面底部 **Artifacts** → 下载 `screen-reader-apk`，解压得到 `app-debug.apk`，传到手机安装（需允许"安装未知来源应用"）。
+打开 [Releases](https://github.com/geek0hao/voc-reader-android/releases/latest)，在 **Assets** 里点 `screen-reader-voc-vX.Y.Z.apk` 下载，传到手机安装（需允许"安装未知来源应用"）。
+
+想拿未发布的开发版，可以去 **Actions** 页面点最新一次 **Build APK** → 页面底部 **Artifacts** → 下载 `screen-reader-apk`，解压得 `app-debug.apk`。
 
 也可以自己在 **Actions → Build APK → Run workflow** 触发一次编译，约 3–5 分钟。
 
-> Debug 包用 Android 默认调试证书签名，自己装没问题；升级覆盖安装也是同一签名，已采集的数据不会丢。
+> Debug 包用 Android 默认调试证书签名，自己装没问题；升级覆盖安装也是同一签名，已采集的数据不会丢。不适合上架应用商店。
 
 ### 方式二：自己构建
 
@@ -210,6 +214,8 @@ cd web && python serve_mobile.py
 ### 云端构建
 
 `.github/workflows/build-apk.yml` 配好了：推送到 `main` 或在 Actions 页面手动触发，Ubuntu runner + JDK 17 + SDK 34 自动编译，产物上传为 artifact（保留 90 天）。公开仓库的 Actions 不计时长。
+
+发正式版时先改 `android/app/build.gradle` 里的 `versionCode` / `versionName`，再打 tag（如 `v1.6.0`）建一个 Release，把重命名过的 APK 传进 Assets —— Release 的下载链接是永久的，artifact 只留 90 天。
 
 更多细节（如何换模型、如何加导出格式、如何做真机回归测试）见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
